@@ -68,13 +68,22 @@ sudo systemctl enable --now bambu-bridge.service
 sudo systemctl status bambu-bridge.service
 ```
 
-#### Option B – OpenWrt / OPNsense / router without systemd
+#### Option B – Alpine Linux (OpenRC)
+```bash
+sudo cp bambu-bridge.openrc /etc/init.d/bambu-bridge
+sudo chmod +x /etc/init.d/bambu-bridge
+sudo rc-update add bambu-bridge default
+sudo rc-service bambu-bridge start
+sudo rc-service bambu-bridge status
+```
+
+#### Option C – OpenWrt / OPNsense / router without systemd or OpenRC
 ```bash
 nohup /usr/bin/python3 /opt/bambu-bridge/bambu-bridge.py --quiet &
 # or add to /etc/rc.local, startup script, etc.
 ```
 
-#### Option C – Docker (if you prefer containers)
+#### Option D – Docker (if you prefer containers)
 See `docker-run.sh` in this repo.
 
 ### Common setups & interface names
