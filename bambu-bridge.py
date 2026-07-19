@@ -17,11 +17,11 @@ import signal
 import socket
 import struct
 import sys
-from typing import Set
+from typing import Dict, List, Set
 
 # config
-SOURCE_IFACE = "lan1.50"   # Printer-side VLAN interface
-TARGET_IFACE = "lan1.10"   # Client-side VLAN interface
+SOURCE_IFACE = "lan1.50"                    # Printer-side VLAN interface
+TARGET_IFACES: List[str] = ["lan1.10"]      # Client-side VLAN interfaces (add as many as you need)
 
 BAMBU_PORTS: Set[int] = {2021, 1900}
 BROADCAST_ADDR = "255.255.255.255"
@@ -42,6 +42,7 @@ logging.addLevelName(logging.STATUS, "STATUS")
 logging.Logger.status = lambda self, msg, *a, **kw: self.log(logging.STATUS, msg, *a, **kw)
 
 capture_socket: socket.socket | None = None
+target_sockets: Dict[str, socket.socket] = {}
 
 def hexdump(data: bytes) -> str:
     """Return traditional hex + ASCII dump."""
@@ -57,10 +58,12 @@ def signal_handler(signum, frame) -> None:
     logger.status("Shutting down gracefully...")
     if capture_socket:
         capture_socket.close()
+    for sock in target_sockets.values():
+        sock.close()
     sys.exit(0)
 
 def main() -> None:
-    global capture_socket
+    global capture_socket, target_sockets
 
     parser = argparse.ArgumentParser(
         description="Bambu Lab VLAN Discovery Bridge — forwards printer broadcasts"
@@ -91,7 +94,21 @@ def main() -> None:
         logger.critical("Cannot bind to interface '%s': %s", SOURCE_IFACE, e)
         sys.exit(1)
 
-    logger.status("Bambu bridge started: %s -> %s BROADCAST", SOURCE_IFACE, TARGET_IFACE)
+    if not TARGET_IFACES:
+        logger.critical("TARGET_IFACES is empty — configure at least one target interface")
+        sys.exit(1)
+
+    for iface in TARGET_IFACES:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, iface.encode())
+            target_sockets[iface] = sock
+        except OSError as e:
+            logger.critical("Cannot bind to target interface '%s': %s", iface, e)
+            sys.exit(1)
+
+    logger.status("Bambu bridge started: %s -> [%s] BROADCAST", SOURCE_IFACE, ", ".join(TARGET_IFACES))
     logger.status("Press Ctrl+C to stop")
 
     count = 0
@@ -143,16 +160,12 @@ def main() -> None:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("\n%s", hexdump(payload))
 
-        # forward
-        try:
-            sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sender.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sender.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, TARGET_IFACE.encode())
-            sender.sendto(payload, (BROADCAST_ADDR, dst_port))
-            sender.close()
-        except Exception as e:
-            logger.error("Failed to forward packet from %s:%d: %s", src_ip, src_port, e)
-            continue
+        # forward to every configured target network
+        for iface, sender in target_sockets.items():
+            try:
+                sender.sendto(payload, (BROADCAST_ADDR, dst_port))
+            except OSError as e:
+                logger.error("Failed to forward packet from %s:%d to %s: %s", src_ip, src_port, iface, e)
 
 
 if __name__ == "__main__":

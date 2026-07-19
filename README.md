@@ -24,7 +24,7 @@ Result: your printer magically appears in the device list again — no manual IP
 
 - Runs a raw packet socket on the **printer-side** interface (`lan1.50` in the example)
 - Filters aggressively (VLAN duplicate removal → IPv4 → UDP → ports 2021/1900 → Bambu magic string)
-- Re-broadcasts **only** legitimate Bambu discovery packets into the **client-side** interface (`lan1.10` in the example)
+- Re-broadcasts **only** legitimate Bambu discovery packets into **one or more client-side** interfaces (`lan1.10` in the example — add as many as you need)
 - < 0.1 % CPU on a Raspberry Pi, zero configuration needed on the printer or slicer
 
 ## Installation
@@ -46,11 +46,17 @@ sudo chmod +x /opt/bambu-bridge/bambu-bridge.py
 sudo nano /opt/bambu-bridge/bambu-bridge.py
 ```
 
-Change these two lines near the top of the script to match your actual interface names:
+Change these lines near the top of the script to match your actual interface names:
 ```python
-SOURCE_IFACE = "lan1.50"   # interface where the printer lives
-TARGET_IFACE = "lan1.10"   # interface where your PC/phone lives
+SOURCE_IFACE = "lan1.50"                          # interface where the printer lives
+TARGET_IFACES = ["lan1.10"]                       # interface(s) where your PC/phone lives
 ```
+
+To rebroadcast into multiple client VLANs (e.g. a trusted LAN, a guest network, and a lab VLAN), just list them all:
+```python
+TARGET_IFACES = ["lan1.10", "lan1.20", "lan1.30"]
+```
+Discovery packets are re-broadcast into every interface in the list, so printers become visible on all of them simultaneously.
 
 ### 3. Run forever
 
@@ -119,6 +125,9 @@ A: Yes. Bambu printers do **not** use mDNS — only SSDP/broadcast. mDNS reflect
 
 **Q: Will this break if I have multiple printers?**  
 A: No — it forwards every printer on the source VLAN automatically.
+
+**Q: Can I rebroadcast to more than one client VLAN?**  
+A: Yes — set `TARGET_IFACES` to a list of interface names and every discovery packet is re-broadcast into each of them.
 
 **Q: Is it safe?**  
 A: Yes — it only forwards packets containing the exact Bambu magic string. Nothing else leaks.
