@@ -1,0 +1,32 @@
+#!/sbin/openrc-run
+# /etc/init.d/bambu-bridge
+#
+# OpenRC init script for the Bambu Lab VLAN Discovery Bridge.
+# Install with:
+#   sudo cp bambu-bridge.openrc /etc/init.d/bambu-bridge
+#   sudo chmod +x /etc/init.d/bambu-bridge
+#   sudo rc-update add bambu-bridge default
+#   sudo rc-service bambu-bridge start
+
+name="bambu-bridge"
+description="Bambu Lab VLAN Discovery Bridge (broadcast forwarder)"
+
+# change this path to wherever you keep the script
+command="/usr/bin/python3"
+command_args="/opt/bambu-bridge/bambu-bridge.py --quiet"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+directory="/opt/bambu-bridge"
+
+# script opens a raw socket (CAP_NET_RAW) and needs to run as root
+# unless you grant the capability to the python3 binary yourself, e.g.:
+#   setcap cap_net_raw+ep /usr/bin/python3.12
+command_user="root:root"
+
+output_log="/var/log/${RC_SVCNAME}.log"
+error_log="/var/log/${RC_SVCNAME}.log"
+
+depend() {
+	need net
+	after firewall
+}
